@@ -2,10 +2,11 @@
 The Python SDK for DevTools AI
 
 
+
 [![Python 3.7+](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org)
 [![Apache 2.0](https://img.shields.io/badge/Apache-2.0-blue)](https://www.apache.org/licenses/LICENSE-2.0)
-[![PyPI](https://img.shields.io/pypi/v/devtools-ai)](https://pypi.org/project/devtools-ai/)
-[![Discord](https://img.shields.io/discord/853669216880295946?&logo=discord)](https://sdk.dev-tools.ai/discord)
+[![PyPI](https://img.shields.io/pypi/v/devtools-ai)](https://pypi.org/project/devtools-ai)
+[![Discord](https://img.shields.io/discord/974528356253065236?&logo=discord)](https://discord.gg/2J9WEYdq5C)
 
 The dev-tools.ai SmartDriver SDK is a simple library that makes it easy to write robust tests backed by computer vision and artificial intelligence.
 
