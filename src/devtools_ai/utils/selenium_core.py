@@ -44,6 +44,7 @@ class SeleniumDriverCore(object):
         self.debug = initialization_options.get('debug', False)
         self.train = initialization_options.get('train', False)
         self.use_cdp = initialization_options.get('use_cdp', False)
+        self.use_ai_elem = initialization_options.get('use_ai_elem', False)
         self.url = initialization_options.get('server_url',
                 os.environ.get('DEVTOOLSAI_URL', 'https://smartdriver.dev-tools.ai'))
         self.default_prod_url = 'https://smartdriver.dev-tools.ai'
@@ -57,7 +58,6 @@ class SeleniumDriverCore(object):
             self.test_case_creation_mode = False
         if self.test_case_creation_mode:
             self.use_classifier_during_creation = initialization_options.get('use_classifier_during_creation', True)
-
 
         self._checkin()
         window_size = self.driver.get_window_size()
@@ -121,7 +121,7 @@ class SeleniumDriverCore(object):
         #        If NOT succesful, raise element not found with link
         if element_name is None:
             element_name = 'element_name_by_%s_%s' % (str(by).replace('.', '_'), str(value).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element, element_name, by, value)
 
@@ -145,7 +145,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_accessibility_id_%s' % (str(accessibility_id).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_accessibility_id, element_name, accessibility_id)
 
@@ -169,7 +169,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_class_name_%s' % (str(name).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_class_name, element_name, name)
 
@@ -194,7 +194,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_css_selector_%s' % (str(css_selector).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_css_selector, element_name, css_selector)
 
@@ -219,7 +219,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_id_%s' % (str(id_).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_id, element_name, id_)
 
@@ -244,7 +244,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_link_text_%s' % (str(link_text).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+
         return self._generic_find_method(
             self.driver.find_element_by_link_text, element_name, link_text)
 
@@ -269,8 +269,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_name_%s' % (str(name).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
-        print(element_name)
+        
         return self._generic_find_method(
             self.driver.find_element_by_name, element_name, name)
 
@@ -295,7 +294,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_partial_link_text_%s' % (str(link_text).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_partial_link_text, element_name, link_text)
 
@@ -320,7 +319,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_tag_name_%s' % (str(name).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_tag_name, element_name, name)
 
@@ -345,7 +344,7 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_xpath_%s' % (str(xpath).replace('.', '_'))
-        element_name = element_name.replace(' ', '_')
+        
         return self._generic_find_method(
             self.driver.find_element_by_xpath, element_name, xpath)
 
@@ -367,7 +366,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_by_element_name('some_label')
         """
-        element_name = element_name.replace(' ', '_')
+        
         el, key, msg = self._classify(element_name)
 
         if el is None:
@@ -576,7 +575,7 @@ class SeleniumDriverCore(object):
         composite = sorted(zip(iou_scores, elements), reverse=True, key=lambda x: x[0])
         # Pick the best match
         """
-        We have to be smart about element selection here because of clicks being intercepted and what not, so we basically 
+        We have to be smart about element selection here because of clicks being intercepted and what not, so we basically
         examine the elements in order of decreasing score, where score > 0. As long as the center of the box is within the elements,
         they are a valid candidate. If none of them is of type input, we pick the one with maxIOU, otherwise we pick the input type,
         which is 90% of test cases.
