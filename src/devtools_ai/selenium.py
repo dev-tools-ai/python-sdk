@@ -20,6 +20,7 @@ else:
     old_selenium = False
 
 from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
 from selenium.common.exceptions import StaleElementReferenceException
 
 from selenium import webdriver
@@ -94,6 +95,7 @@ class SmartDriver(SeleniumDriverCore):
             key = self.get_screenshot_hash(screenshotBase64)
             resp_data = self._check_screenshot_exists(key, element_name)
             if resp_data['success'] and 'predicted_element' in resp_data and resp_data['predicted_element'] is not None:
+                log.debug(resp_data.get("message", ""))
                 if self.debug:
                     print(f'Found cached box in action info for {element_name} using that')
                 element_box = resp_data['predicted_element']
@@ -113,7 +115,8 @@ class SmartDriver(SeleniumDriverCore):
                 data = {'screenshot': screenshotBase64,
                         'source': source,
                         'api_key': self.api_key,
-                        'label': element_name}
+                        'label': element_name,
+                        'test_case_name': self.test_case_uuid}
                 classify_url = self.url + '/detect'
                 start = time.time()
                 r = requests.post(classify_url, json=data, verify=False)
@@ -123,11 +126,13 @@ class SmartDriver(SeleniumDriverCore):
                 response = r.json()
                 if not response['success']:
                     classification_error_msg = response['message'].replace(self.default_prod_url, self.url)
+                    log.debug(classification_error_msg)
                     raise Exception(classification_error_msg)
 
                 run_key = response['screenshot_uuid']
                 msg = response.get('message', '')
                 msg = msg.replace(self.default_prod_url, self.url)
+                log.debug(msg)
 
                 element_box = response['predicted_element']
                 if self.use_cdp:
@@ -150,7 +155,7 @@ class SmartDriver(SeleniumDriverCore):
         new_box = {'x': bounding_box['x'] / multiplier, 'y': bounding_box['y'] / multiplier,
                    'width': bounding_box['width'] / multiplier, 'height': bounding_box['height'] / multiplier}
         # Get all elements
-        elements = self.driver.find_elements_by_xpath("//*")
+        elements = self.driver.find_elements(By.XPATH, "//*")
         # Compute IOU
         iou_scores = []
         for element in elements:

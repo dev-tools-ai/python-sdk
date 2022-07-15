@@ -27,6 +27,8 @@ else:
 
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.common.exceptions import StaleElementReferenceException
+from selenium.webdriver.common.by import By
+
 
 from selenium import webdriver
 
@@ -36,8 +38,28 @@ requests.packages.urllib3.disable_warnings()
 log = logging.getLogger(__name__)
 
 class SeleniumDriverCore(object):
-    def __init__(self, driver, api_key, initialization_options={}):
+    def __init__(self, driver, api_key=None, initialization_options={}):
+        """
+        Initialize DevTools SmartDriver.
+        :Args:
+         - driver: The already initialzed driver object.
+         - api_key: Your API key to use for to test. If None will look for file ~/.smartdriver
+         - initialization_options: Additional options that you can use to customize the smartdriver.
+
+        :Returns:
+         - Driver - the new driver object to use for your tests
+        """
         self.driver = driver
+        if api_key is None:
+            if 'DEVTOOLSAI_API_KEY' in os.environ:
+                api_key = os.environ['DEVTOOLSAI_API_KEY']
+            elif os.path.exists(os.path.expanduser('~/.smartdriver')):
+                with open(os.path.expanduser('~/.smartdriver')) as inFile:
+                    api_key = json.loads(inFile.read()).get('api_key', None)
+
+            # No API key, so return
+            if api_key is None:
+                return driver
         self.api_key = api_key
         self.last_test_case_screenshot_uuid = None
         self.run_id = str(uuid.uuid1())
@@ -121,7 +143,6 @@ class SeleniumDriverCore(object):
         #        If NOT succesful, raise element not found with link
         if element_name is None:
             element_name = 'element_name_by_%s_%s' % (str(by).replace('.', '_'), str(value).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element, element_name, by, value)
 
@@ -145,7 +166,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_accessibility_id_%s' % (str(accessibility_id).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_accessibility_id, element_name, accessibility_id)
 
@@ -169,7 +189,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_class_name_%s' % (str(name).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_class_name, element_name, name)
 
@@ -194,7 +213,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_css_selector_%s' % (str(css_selector).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_css_selector, element_name, css_selector)
 
@@ -219,7 +237,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_id_%s' % (str(id_).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_id, element_name, id_)
 
@@ -244,7 +261,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_link_text_%s' % (str(link_text).replace('.', '_'))
-
         return self._generic_find_method(
             self.driver.find_element_by_link_text, element_name, link_text)
 
@@ -269,7 +285,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_name_%s' % (str(name).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_name, element_name, name)
 
@@ -294,7 +309,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_partial_link_text_%s' % (str(link_text).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_partial_link_text, element_name, link_text)
 
@@ -319,7 +333,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_tag_name_%s' % (str(name).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_tag_name, element_name, name)
 
@@ -344,7 +357,6 @@ class SeleniumDriverCore(object):
         """
         if element_name is None:
             element_name = 'element_name_by_xpath_%s' % (str(xpath).replace('.', '_'))
-        
         return self._generic_find_method(
             self.driver.find_element_by_xpath, element_name, xpath)
 
@@ -366,7 +378,6 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_by_element_name('some_label')
         """
-        
         el, key, msg = self._classify(element_name)
 
         if el is None:
@@ -490,7 +501,7 @@ class SeleniumDriverCore(object):
             response = self._check_screenshot_exists(screenshot_uuid, element_name)
             if self.debug:
                 print(response)
-            if response.get('exists_screenshot', False):
+            if response.get('exists_screenshot', False) or response.get('is_frozen', False):
                 if response['is_frozen']:
                     if self.debug:
                         print(f'{element_name} is frozen, skipping upload')
@@ -564,7 +575,7 @@ class SeleniumDriverCore(object):
         new_box = {'x': bounding_box['x'] / multiplier, 'y': bounding_box['y'] / multiplier,
                    'width': bounding_box['width'] / multiplier, 'height': bounding_box['height'] / multiplier}
         # Get all elements
-        elements = self.driver.find_elements_by_xpath("//*")
+        elements = self.driver.find_elements(By.XPATH, "//*")
         # Compute IOU
         iou_scores = []
         for element in elements:
