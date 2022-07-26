@@ -1,5 +1,4 @@
 import base64
-import json
 import logging
 import requests
 import time
@@ -33,7 +32,7 @@ log = logging.getLogger(__name__)
 
 class SmartDriver(SeleniumDriverCore):
     def __init__(self, driver, api_key, initialization_dict={}):
-        self.version = 'selenium-0.1.20'
+        self.version = 'selenium-0.1.13'
         SeleniumDriverCore.__init__(self, driver, api_key, initialization_dict)
         window_size = self.driver.get_window_size()
         screenshotBase64 = self._get_screenshot()
@@ -154,33 +153,43 @@ class SmartDriver(SeleniumDriverCore):
         # Adapt box to local coordinates
         new_box = {'x': bounding_box['x'] / multiplier, 'y': bounding_box['y'] / multiplier,
                    'width': bounding_box['width'] / multiplier, 'height': bounding_box['height'] / multiplier}
-        # Get all elements
-        elements = self.driver.find_elements(By.XPATH, "//*")
-        # Compute IOU
-        iou_scores = []
-        for element in elements:
-            try:
-                iou_scores.append(self._iou_boxes(new_box, element.rect))
-            except StaleElementReferenceException:
-                iou_scores.append(0)
-        composite = sorted(zip(iou_scores, elements), reverse=True, key=lambda x: x[0])
-        # Pick the best match
-        """
-        We have to be smart about element selection here because of clicks being intercepted and what not, so we basically 
-        examine the elements in order of decreasing score, where score > 0. As long as the center of the box is within the elements,
-        they are a valid candidate. If none of them is of type input, we pick the one with maxIOU, otherwise we pick the input type,
-        which is 90% of test cases.
-        """
-        composite = filter(lambda x: x[0] > 0, composite)
-        composite = list(filter(lambda x: self._center_hit(new_box, x[1].rect), composite))
 
-        if len(composite) == 0:
-            raise NoElementFoundException('Could not find any web element under the center of the bounding box')
-        else:
-            for score, element in composite:
-                if (element.tag_name == 'input' or element.tag_name == 'button') and score > composite[0][0] * 0.9:
-                    return element
-            return composite[0][1]
+        element_types = ["img", "input", "button", "a", "*"]
+        for element_type in element_types:
+            # Get all elements
+            try:
+                elements = self.driver.find_elements(By.XPATH, "//" + element_type)
+            except StaleElementReferenceException:
+                elements = self.driver.find_elements(By.XPATH, "//" + element_type)
+
+            # Compute IOU
+            iou_scores = []
+            for element in elements:
+                try:
+                    iou_scores.append(self._iou_boxes(new_box, element.rect))
+                except StaleElementReferenceException:
+                    iou_scores.append(0)
+            composite = sorted(zip(iou_scores, elements), reverse=True, key=lambda x: x[0])
+            # Pick the best match
+            """
+            We have to be smart about element selection here because of clicks being intercepted and what not, so we basically
+            examine the elements in order of decreasing score, where score > 0. As long as the center of the box is within the elements,
+            they are a valid candidate. If none of them is of type input, we pick the one with maxIOU, otherwise we pick the input type,
+            which is 90% of test cases.
+            """
+            composite = filter(lambda x: x[0] > 0, composite)
+            composite = list(filter(lambda x: self._center_hit(new_box, x[1].rect), composite))
+
+            if len(composite) == 0:
+                # No elements found matching, continue to next search
+                continue
+            else:
+                for score, element in composite:
+                    if score > composite[0][0] * 0.9:
+                        return element
+                return composite[0][1]
+        raise NoElementFoundException('Could not find any web element under the center of the bounding box')
+
 
     def _iou_boxes(self, box1, box2):
         return self._iou(box1['x'], box1['y'], box1['width'], box1['height'], box2['x'], box2['y'], box2['width'], box2['height'])

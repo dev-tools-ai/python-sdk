@@ -1,16 +1,8 @@
 import base64
-import hashlib
-import json
 import logging
-import os
-import platform
 import requests
-import sys
 import time
-import traceback
 import urllib.parse
-import uuid
-import warnings
 import webbrowser
 
 import io
@@ -141,10 +133,10 @@ class SmartDriver(SeleniumDriverCore):
 
         # Get all elements
         try:
-            elements = self.driver.find_elements_by_xpath("//*")
+            elements = self.driver.find_elements(by='xpath', value='//*')
         except StaleElementReferenceException:
             self.driver.refresh()
-            elements = self.driver.find_elements_by_xpath("//*")
+            elements = self.driver.find_elements(by='xpath', value='//*')
 
         # Compute IOU
         iou_scores = []
@@ -168,6 +160,8 @@ class SmartDriver(SeleniumDriverCore):
                 if element.tag_name == 'input' or element.tag_name == 'button':
                     return element
             return composite[0][1]
+
+
 class ai_elem(webdriver.webelement.WebElement):
     def __init__(self, parent, _id, elem, driver, multiplier=1.0):
         super(ai_elem, self).__init__(parent, _id)

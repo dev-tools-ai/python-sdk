@@ -8,11 +8,8 @@ import requests
 import sys
 import time
 import traceback
-import urllib.parse
 import uuid
 import warnings
-import webbrowser
-
 
 import io
 from distutils.util import strtobool
@@ -25,15 +22,9 @@ if version.parse(selenium.__version__) < version.parse('4.0.0'):
 else:
     old_selenium = False
 
-from selenium.webdriver.common.action_chains import ActionChains
-from selenium.common.exceptions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 
-
-from selenium import webdriver
-
 requests.packages.urllib3.disable_warnings()
-
 
 log = logging.getLogger(__name__)
 
@@ -142,7 +133,7 @@ class SeleniumDriverCore(object):
         #        If succesful, return element
         #        If NOT succesful, raise element not found with link
         if element_name is None:
-            element_name = 'element_name_by_%s_%s' % (str(by).replace('.', '_'), str(value).replace('.', '_'))
+            element_name = 'element_name_by_locator_By_%s:_%s' % (str(by).replace('.', '_').replace(' ', '_'), str(value).replace('.', '_').replace(' ', '_'))
         return self._generic_find_method(
             self.driver.find_element, element_name, by, value)
 
@@ -164,10 +155,7 @@ class SeleniumDriverCore(object):
             ::
                 element = driver.find_element_by_accessibility_id('foo')
         """
-        if element_name is None:
-            element_name = 'element_name_by_accessibility_id_%s' % (str(accessibility_id).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_accessibility_id, element_name, accessibility_id)
+        return self.find_element(self, by=By.ACCESSIBILITY_ID, value=accessibility_id, element_name=element_name)
 
     def find_element_by_class_name(self, name, element_name=None):
         """
@@ -187,10 +175,7 @@ class SeleniumDriverCore(object):
             ::
                 element = driver.find_element_by_class_name('foo')
         """
-        if element_name is None:
-            element_name = 'element_name_by_class_name_%s' % (str(name).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_class_name, element_name, name)
+        return self.find_element(by=By.CLASS_NAME, value=name, element_name=element_name)
 
     def find_element_by_css_selector(self, css_selector, element_name=None):
         """
@@ -211,10 +196,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_css_selector('#foo')
         """
-        if element_name is None:
-            element_name = 'element_name_by_css_selector_%s' % (str(css_selector).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_css_selector, element_name, css_selector)
+        return self.find_element(by=By.CSS_SELECTOR, value=css_selector, element_name=element_name)
 
     def find_element_by_id(self, id_, element_name=None):
         """
@@ -235,10 +217,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_id('foo')
         """
-        if element_name is None:
-            element_name = 'element_name_by_id_%s' % (str(id_).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_id, element_name, id_)
+        return self.find_element(by=By.ID, value=id_, element_name=element_name)
 
     def find_element_by_link_text(self, link_text, element_name=None):
         """
@@ -259,10 +238,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_link_text('Sign In')
         """
-        if element_name is None:
-            element_name = 'element_name_by_link_text_%s' % (str(link_text).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_link_text, element_name, link_text)
+        return self.find_element(by=By.LINK_TEXT, value=link_text, element_name=element_name)
 
     def find_element_by_name(self, name, element_name=None):
         """
@@ -283,10 +259,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_name('foo')
         """
-        if element_name is None:
-            element_name = 'element_name_by_name_%s' % (str(name).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_name, element_name, name)
+        return self.find_element(by=By.NAME, value=name, element_name=element_name)
 
     def find_element_by_partial_link_text(self, link_text, element_name=None):
         """
@@ -307,10 +280,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_partial_link_text('Sign')
         """
-        if element_name is None:
-            element_name = 'element_name_by_partial_link_text_%s' % (str(link_text).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_partial_link_text, element_name, link_text)
+        return self.find_element(by=By.PARTIAL_LINK_TEXT, value=link_text, element_name=element_name)
 
     def find_element_by_tag_name(self, name, element_name=None):
         """
@@ -331,10 +301,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_tag_name('h1')
         """
-        if element_name is None:
-            element_name = 'element_name_by_tag_name_%s' % (str(name).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_tag_name, element_name, name)
+        return self.find_element(by=By.TAG_NAME, value=name, element_name=element_name)
 
     def find_element_by_xpath(self, xpath, element_name=None):
         """
@@ -355,10 +322,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_element_by_xpath('//div/td[1]')
         """
-        if element_name is None:
-            element_name = 'element_name_by_xpath_%s' % (str(xpath).replace('.', '_'))
-        return self._generic_find_method(
-            self.driver.find_element_by_xpath, element_name, xpath)
+        return self.find_element(by=By.XPATH, value=xpath, element_name=element_name)
 
     def find_by_ai(self, element_name):
         """
@@ -565,42 +529,6 @@ class SeleniumDriverCore(object):
             self.last_screenshot = screenshotBase64
         else:
             raise Exception(res['message'])
-
-    def _match_bounding_box_to_selenium_element(self, bounding_box, multiplier=1):
-        """
-            We have to ba hacky about this becasue Selenium does not let us click by coordinates.
-            We retrieve all elements, compute the IOU between the bounding_box and all the elements and pick the best match.
-        """
-        # Adapt box to local coordinates
-        new_box = {'x': bounding_box['x'] / multiplier, 'y': bounding_box['y'] / multiplier,
-                   'width': bounding_box['width'] / multiplier, 'height': bounding_box['height'] / multiplier}
-        # Get all elements
-        elements = self.driver.find_elements(By.XPATH, "//*")
-        # Compute IOU
-        iou_scores = []
-        for element in elements:
-            try:
-                iou_scores.append(self._iou_boxes(new_box, element.rect))
-            except StaleElementReferenceException:
-                iou_scores.append(0)
-        composite = sorted(zip(iou_scores, elements), reverse=True, key=lambda x: x[0])
-        # Pick the best match
-        """
-        We have to be smart about element selection here because of clicks being intercepted and what not, so we basically
-        examine the elements in order of decreasing score, where score > 0. As long as the center of the box is within the elements,
-        they are a valid candidate. If none of them is of type input, we pick the one with maxIOU, otherwise we pick the input type,
-        which is 90% of test cases.
-        """
-        composite = filter(lambda x: x[0] > 0, composite)
-        composite = list(filter(lambda x: self._center_hit(new_box, x[1].rect), composite))
-
-        if len(composite) == 0:
-            raise NoElementFoundException('Could not find any web element under the center of the bounding box')
-        else:
-            for score, element in composite:
-                if (element.tag_name == 'input' or element.tag_name == 'button') and score > composite[0][0] * 0.9:
-                    return element
-            return composite[0][1]
 
     def _iou_boxes(self, box1, box2):
         return self._iou(box1['x'], box1['y'], box1['width'], box1['height'], box2['x'], box2['y'], box2['width'],
