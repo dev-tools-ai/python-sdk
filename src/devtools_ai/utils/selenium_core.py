@@ -10,7 +10,6 @@ import time
 import traceback
 import uuid
 import warnings
-
 import io
 from distutils.util import strtobool
 from PIL import Image
@@ -25,6 +24,8 @@ else:
 from selenium.webdriver.common.by import By
 
 requests.packages.urllib3.disable_warnings()
+from .scanner import Scanner
+
 
 log = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class SeleniumDriverCore(object):
             if api_key is None:
                 return driver
         self.api_key = api_key
+        self._driver_type = None
         self.last_test_case_screenshot_uuid = None
         self.run_id = str(uuid.uuid1())
         self.debug = initialization_options.get('debug', False)
@@ -61,9 +63,17 @@ class SeleniumDriverCore(object):
         self.url = initialization_options.get('server_url',
                 os.environ.get('DEVTOOLSAI_URL', 'https://smartdriver.dev-tools.ai'))
         self.default_prod_url = 'https://smartdriver.dev-tools.ai'
+        self.scanner = None
+        try:
+            if self._driver_type == 'selenium':
+                self.scanner = Scanner(self, self.driver, self.url, self.api_key)
+        except Exception:
+            pass
+
+
         test_case_name = initialization_options.get('test_case_name', None)
         if test_case_name is None:
-            test_case_name = traceback.format_stack()[0].split()[1].split('/')[-1].split('.py')[0]
+            test_case_name = traceback.format_stack()[0].split()[1].split('/')[-1].split('\\')[-1].split('.py')[0]
         self.test_case_uuid = test_case_name
         try:
             self.test_case_creation_mode = strtobool(os.environ.get('DEVTOOLSAI_INTERACTIVE', '0')) == 1
@@ -79,19 +89,17 @@ class SeleniumDriverCore(object):
         im = Image.open(io.BytesIO(base64.b64decode(screenshotBase64)))
         width, height = im.size
         self.multiplier = 1.0 * width / window_size['width']
-        self_attrs = dir(self)
         # Disable warnings
         requests.packages.urllib3.disable_warnings()
         warnings.filterwarnings("ignore", category=DeprecationWarning)
 
-        for a_name in dir(driver):
-            if a_name in self_attrs:
+        for a_name in dir(self.driver):
+            if a_name in dir(self):
                 continue
             try:
                 def _call_driver(*args, name=a_name, **kwargs):
                     v = getattr(self.driver, name)
                     return v(*args, **kwargs)
-
                 v = getattr(self.driver, a_name)
                 if hasattr(v, '__call__'):
                     setattr(self, a_name, _call_driver)
@@ -99,6 +107,43 @@ class SeleniumDriverCore(object):
                     setattr(self, a_name, v)
             except Exception as err:
                 continue
+    @property
+    def current_window_handle(self) -> str:
+        return self.driver.current_window_handle
+
+    @property
+    def window_handles(self):
+        return self.driver.window_handles
+    @property
+    def mobile(self):
+        return self.driver._mobile
+    @property
+    def title(self) -> str:
+        return self.driver.title
+    @property
+    def current_url(self) -> str:
+        return self.driver.current_url
+    @property
+    def page_source(self) -> str:
+        return self.driver.page_source
+    @property
+    def switch_to(self):
+        return self.driver.switch_to
+    @property
+    def timeouts(self):
+        return self.driver.timeouts
+    @property
+    def orientation(self):
+        return self.driver.orientation
+    @property
+    def application_cache(self):
+        return self.driver.application_cache
+    @property
+    def log_types(self):
+        return self.driver.log_types
+    @property
+    def virtual_authenticator_id(self) -> str:
+        return self.driver.virtual_authenticator_id
 
     def get(self, url):
         self.driver.get(url)
@@ -118,6 +163,9 @@ class SeleniumDriverCore(object):
     def implicitly_wait(self, wait_time):
         self.driver.implicitly_wait(wait_time)
 
+    def scan_domain(self, domain, max_depth=10):
+        self.scanner.crawl_domain(domain, max_depth=max_depth)
+
     def find_element(self, by='id', value=None, element_name=None):
         """
         Find an element given a By strategy and locator.
@@ -126,7 +174,6 @@ class SeleniumDriverCore(object):
                 element = driver.find_element(By.ID, 'foo')
         :rtype: WebElement
         """
-
         # Try to classify with selector
         #    If success, call update_elem ('train_if_necessary': true)
         #    If NOT successful, call _classify
@@ -342,7 +389,7 @@ class SeleniumDriverCore(object):
 
                 element = driver.find_by_element_name('some_label')
         """
-        el, key, msg = self._classify(element_name)
+        el, key, msg = self._classify(element_name, is_backup=False)
 
         if el is None:
             print(msg)
@@ -358,12 +405,12 @@ class SeleniumDriverCore(object):
             driver_element = find_method(*args)
             if driver_element:
                 try:
-                    key = self._upload_screenshot_if_necessary(element_name)
+                    key = self._upload_screenshot_if_necessary(element_name, driver_element=driver_element)
                     if key is not None:
                         # Key is None when element is frozen or another issue during screenshot and upload.
                         self._update_elem(driver_element, key, element_name)
-                except Exception:
-                    log.error('error uploading screenshot to devtools. Continuing.')
+                except Exception as e:
+                    log.error('error uploading screenshot to Dev Tools. Continuing.')
             return driver_element
         except NoElementFoundException as e:
             log.exception(e)
@@ -385,7 +432,8 @@ class SeleniumDriverCore(object):
                 'os': platform.platform(),
                 'sdk_version': self.version,
                 'language': 'python3-' + sys.version,
-                'test_case_name': self.test_case_uuid}
+                'test_case_name': self.test_case_uuid,
+                'automation_name': self.automation_name}
         try:
             res = requests.post(self.url + '/ping', json=data, timeout=3, verify=False)
             res = res.json()
@@ -405,19 +453,26 @@ class SeleniumDriverCore(object):
             'width': elem.rect['width'] * self.multiplier,
             'height': elem.rect['height'] * self.multiplier,
             'multiplier': self.multiplier,
-            'test_case_name': self.test_case_uuid
+            'test_case_name': self.test_case_uuid,
+            'page_offset': self.page_offset * self.multiplier,
+            'ref_screenshot_uuid': self.ref_screenshot_uuid
         }
         try:
             action_url = self.url + '/add_action_info'
             # Verify is False as the lets encrypt certificate raises issue on mac.
-            res = requests.post(action_url, json=data, verify=False)
-            res = res.json()
+            for _ in range(2):
+                try:
+                    res = requests.post(action_url, json=data, verify=False, timeout=4)
+                    res = res.json()
+                    break
+                except Exception:
+                    log.error('error loading add_action_info')
             if not res['success']:
                 log.error(res['message'])
         except Exception:
             pass
 
-    def get_screenshot_hash(self, b64_screenshot):
+    def get_screenshot_hash(self, b64_screenshot, is_appium=False):
         """
         Get the screenshot uuid from the base64 encoded screenshot
         """
@@ -436,7 +491,12 @@ class SeleniumDriverCore(object):
         data = {'api_key': self.api_key, 'screenshot_uuid': screenshot_uuid, 'label': element_name}
         check_screenshot_url = self.url + '/exists_screenshot'
         start = time.time()
-        r = requests.post(check_screenshot_url, json=data, verify=False).json()
+        for _ in range(2):
+            try:
+                r = requests.post(check_screenshot_url, json=data, verify=False, timeout=6).json()
+                break
+            except Exception:
+                log.error('error in exists_screenshot')
         end = time.time()
         if self.debug:
             print(f'Cached bounding box request time: {end - start}')
@@ -450,16 +510,43 @@ class SeleniumDriverCore(object):
         request_data = {'api_key': self.api_key,
                         'label': element_name
                         }
-        resp = requests.post(url, json=request_data).json()
+        for _ in range(2):
+            try:
+                resp = requests.post(url, json=request_data, timeout=3).json()
+                break
+            except Exception:
+                log.error('error in check_frozen')
         return resp.get('is_frozen', True)
 
+    def _scroll_page(self, amount):
+        self.driver.execute_script('window.scrollBy(0, ' + str(int(amount)) + ')')
 
-    def _upload_screenshot_if_necessary(self, element_name):
+    def _scroll_to_element(self, element, scroll_up=False):
+        if scroll_up:
+            self.driver.execute_script('arguments[0].scrollIntoView(false);', element)
+        else:
+            self.driver.execute_script('arguments[0].scrollIntoView(true);', element)
+
+    def _upload_screenshot_if_necessary(self, element_name, driver_element=None):
         if self._check_frozen(element_name):
             return None
 
         screenshotBase64 = self._get_screenshot()
         screenshot_uuid = self.get_screenshot_hash(screenshotBase64)
+        self.ref_screenshot_uuid = None
+        self.page_offset = 0
+        if driver_element is not None and self._driver_type == 'selenium':
+            self.page_offset = self.driver.execute_script('return window.pageYOffset')
+            needs_to_scroll = (driver_element.rect['y'] > (self.window_size['height'] + self.page_offset)) or (driver_element.rect['y'] < self.page_offset)
+            if needs_to_scroll:
+                self.previous_page_offset = self.page_offset
+                self.ref_screenshot_uuid = screenshot_uuid
+                self._scroll_to_element(driver_element, driver_element.rect['y'] < self.page_offset)
+                screenshotBase64 = self._get_screenshot()
+                screenshot_uuid = self.get_screenshot_hash(screenshotBase64)
+                self.page_offset = self.driver.execute_script('return window.pageYOffset')
+                self._scroll_page(int(self.previous_page_offset - self.page_offset)) # scroll back to initial position
+
         # Check results
         try:
             response = self._check_screenshot_exists(screenshot_uuid, element_name)
@@ -480,9 +567,17 @@ class SeleniumDriverCore(object):
                         'screenshot': screenshotBase64,
                         'label': element_name,
                         'test_case_name': self.test_case_uuid}
+                if self._driver_type == 'appium':
+                    data['is_appium'] = True
+                    del data['screenshot_uuid']
                 upload_screenshot_url = self.url + '/upload_screenshot'
                 start = time.time()
-                r = requests.post(upload_screenshot_url, json=data, verify=False).json()
+                for _ in range(2):
+                    try:
+                        r = requests.post(upload_screenshot_url, json=data, verify=False, timeout=6).json()
+                        break
+                    except Exception:
+                        log.error('error uploading url')
                 end = time.time()
                 if r['success'] == False:
                     log.error(f'Error uploading screenshot {screenshot_uuid}')
@@ -495,20 +590,30 @@ class SeleniumDriverCore(object):
         except Exception:
             log.exception('Error checking cached screenshot / uploading it from remote')
 
-    def _test_case_get_box(self, label):
+    def _test_case_get_box(self, label, event_id=None):
         """
             Checks for a bounding box given the last screenshot uuid that we got when uploading it.
         """
         box = None
-        data = {'api_key': self.api_key, 'label': label, 'screenshot_uuid': self.last_test_case_screenshot_uuid,
-                'run_classifier': self.use_classifier_during_creation}
+        data = {'api_key': self.api_key, 'label': label,
+                'screenshot_uuid': self.last_test_case_screenshot_uuid,
+                'run_classifier': self.use_classifier_during_creation,
+                'event_id': event_id}
 
-        r = requests.post(self.url + '/testcase/get_action_info', json=data, verify=False).json()
+        needs_reload = False
+        r = {'success': False}
+        for _ in range(2):
+            try:
+                r = requests.post(self.url + '/testcase/get_action_info', json=data, verify=False, timeout=3).json()
+                break
+            except Exception:
+                log.error('error getting test case actioninfo')
         if r['success']:
             box = r['predicted_element']
+            needs_reload = r['needs_reload']
         else:
-            log.error(r['message'])
-        return box
+            log.error(r.get('message', 'No error msg received'))
+        return box, needs_reload
 
 
     def _test_case_upload_screenshot(self, label):
@@ -523,7 +628,14 @@ class SeleniumDriverCore(object):
                 'screenshot': screenshotBase64,
                 'label': label,
                 'is_interactive': True}
-        res = requests.post(url, json=data, verify=False).json()
+        if self._driver_type == 'appium':
+            data['is_appium'] = True
+        for _ in range(2):
+            try:
+                res = requests.post(url, json=data, verify=False, timeout=6).json()
+                break
+            except Exception:
+                log.error('error uploading screenshot')
         if res['success']:
             self.last_test_case_screenshot_uuid = res['screenshot_uuid']
             self.last_screenshot = screenshotBase64
@@ -556,6 +668,76 @@ class SeleniumDriverCore(object):
             return True
         else:
             return False
+
+    def _send_warning(self, real_xpath, label, screenshot_uuid, resp_data, is_backup=False):
+        element_box = resp_data.get('predicted_element')
+        score = resp_data.get('score', None)
+        message = resp_data['message']
+        if is_backup:
+            warning_type = 'backup_triggered'
+        else:
+            warning_type = 'find_by_ai'
+        data = {'real_xpath': real_xpath, 'label': label, 'screenshot_uuid': screenshot_uuid, 'api_key': self.api_key,
+                'warning_type': warning_type,
+                'predicted_element': element_box, 'score': score, 'message': message}
+        r = requests.post(self.url + '/save_warning', json=data, verify=False)
+
+    def _generate_xpath(self, element):
+        return self.driver.execute_script(
+            "function absoluteXPath(element) {" +
+            "var comp, comps = [];" +
+            "var parent = null;" +
+            "var xpath = '';" +
+            "var getPos = function(element) {" +
+            "var position = 1, curNode;" +
+            "if (element.nodeType == Node.ATTRIBUTE_NODE) {" +
+            "return null;" +
+            "}" +
+            "for (curNode = element.previousSibling; curNode; curNode = curNode.previousSibling) {" +
+            "if (curNode.nodeName == element.nodeName) {" +
+            "++position;" +
+            "}" +
+            "}" +
+            "return position;" +
+            "};" +
+
+            "if (element instanceof Document) {" +
+            "return '/';" +
+            "}" +
+
+            "for (; element && !(element instanceof Document); element = element.nodeType == Node.ATTRIBUTE_NODE ? element.ownerElement : element.parentNode) {" +
+            "comp = comps[comps.length] = {};" +
+            "switch (element.nodeType) {" +
+            "case Node.TEXT_NODE:" +
+            "comp.name = 'text()';" +
+            "break;" +
+            "case Node.ATTRIBUTE_NODE:" +
+            "comp.name = '@' + element.nodeName;" +
+            "break;" +
+            "case Node.PROCESSING_INSTRUCTION_NODE:" +
+            "comp.name = 'processing-instruction()';" +
+            "break;" +
+            "case Node.COMMENT_NODE:" +
+            "comp.name = 'comment()';" +
+            "break;" +
+            "case Node.ELEMENT_NODE:" +
+            "comp.name = element.nodeName;" +
+            "break;" +
+            "}" +
+            "comp.position = getPos(element);" +
+            "}" +
+
+            "for (var i = comps.length - 1; i >= 0; i--) {" +
+            "comp = comps[i];" +
+            "xpath += '/' + comp.name.toLowerCase();" +
+            "if (comp.position !== null) {" +
+            "xpath += '[' + comp.position + ']';" +
+            "}" +
+            "}" +
+
+            "return xpath;" +
+
+            "} return absoluteXPath(arguments[0]);", element)
 
 class NoElementFoundException(Exception):
     pass
