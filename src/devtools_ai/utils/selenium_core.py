@@ -387,7 +387,7 @@ class SeleniumDriverCore(object):
         :Usage:
             ::
 
-                element = driver.find_by_element_name('some_label')
+                element = driver.find_by_ai('some_label')
         """
         el, key, msg = self._classify(element_name, is_backup=False)
 
